@@ -29,6 +29,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MilestoneSubmissionCard } from "./milestone-submission-card";
 import { Model4MaintainerDashboard } from "./model4-maintainer-dashboard";
 import type { Milestone, ContributorProgress } from "@/types/bounty";
+import {
+  ApplicationReviewDashboard,
+  type Application,
+} from "@/components/bounty/application-review-dashboard";
+import { SubmissionApprovalPanel } from "@/components/bounty/submission-approval-panel";
+import { ApplicationSubmitWorkPanel } from "@/components/bounty/application-submit-work-panel";
 
 type BountyData = ReturnType<typeof useBountyDetail>["data"];
 
@@ -61,6 +67,15 @@ function getFullMilestoneData(bounty: BountyData): {
       bounty?.contributorProgress ?? MOCK_MODEL4_CONTRIBUTORS,
   };
 }
+
+// Backend does not currently provide applications in the response.
+// Fall back to empty array until the schema supports it.
+const getApplications = (bounty: BountyData): Application[] => {
+  return (
+    (bounty as BountyData & { applications?: Application[] })?.applications ??
+    []
+  );
+};
 
 export function BountyDetailClient({ bountyId }: { bountyId: string }) {
   const router = useRouter();
@@ -133,6 +148,18 @@ export function BountyDetailClient({ bountyId }: { bountyId: string }) {
   const isCreator =
     (session?.user as { id?: string } | undefined)?.id === bounty.createdBy;
   const isFinalized = bounty.status === "COMPLETED";
+  // walletAddress is required for contract actions. Do NOT fallback to user.id.
+  const walletAddress =
+    (session?.user as { walletAddress?: string })?.walletAddress || "";
+
+  // Identify if the current user is the assigned contributor
+  // using a fallback check on submissions or assumed backend field.
+  const isAssignedApplicant =
+    (bounty as BountyData & { assignedContributorId?: string })
+      ?.assignedContributorId === session?.user?.id ||
+    bounty.submissions?.some((s) => s.submittedBy === session?.user?.id) ||
+    (!isCreator && bounty.status === "IN_PROGRESS");
+
   // submissions is present on BountyQuery (single-bounty query) but not on
   // BountyFieldsFragment (list query). The cast is safe here because
   // useBountyDetail returns BountyFieldsFragment & Partial<BountyQuery["bounty"]>.
@@ -200,9 +227,43 @@ export function BountyDetailClient({ bountyId }: { bountyId: string }) {
 
         {!isCancelled && pool && <EscrowDetailPanel poolId={bountyId} />}
         <RefundStatusTracker bountyId={bountyId} isCancelled={isCancelled} />
-        {bounty.type !== "FIXED_PRICE" && !isCompetition && (
-          <BountyDetailSubmissionsCard bounty={bounty} />
-        )}
+
+        {/* Model 2 Application Flow integration */}
+        {bounty.type === "MILESTONE_BASED" &&
+          isCreator &&
+          bounty.status === "OPEN" && (
+            <ApplicationReviewDashboard
+              bountyId={bountyId}
+              creatorAddress={walletAddress}
+              applications={getApplications(bounty)}
+            />
+          )}
+
+        {bounty.type === "MILESTONE_BASED" &&
+          isAssignedApplicant &&
+          walletAddress &&
+          bounty.status === "IN_PROGRESS" && (
+            <ApplicationSubmitWorkPanel
+              bountyId={bountyId}
+              contributorAddress={walletAddress}
+            />
+          )}
+
+        {bounty.type === "MILESTONE_BASED" &&
+          isCreator &&
+          bounty.status === "UNDER_REVIEW" && (
+            <SubmissionApprovalPanel
+              bounty={bounty}
+              creatorAddress={walletAddress}
+              submittedWorkCid={
+                bounty.submissions?.[0]?.githubPullRequestUrl || undefined
+              }
+            />
+          )}
+
+        {bounty.type !== "FIXED_PRICE" &&
+          bounty.type !== "MILESTONE_BASED" &&
+          !isCompetition && <BountyDetailSubmissionsCard bounty={bounty} />}
         {bounty.type === "FIXED_PRICE" && <FcfsApprovalPanel bounty={bounty} />}
         {isCompetition && isCreator && (pastDeadline || isFinalized) && (
           <CompetitionJudging
