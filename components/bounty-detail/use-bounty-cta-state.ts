@@ -6,11 +6,12 @@ import { useCanRaiseDispute } from "@/hooks/use-can-raise-dispute";
 import { useCancelBountyDialog } from "@/hooks/use-cancel-bounty-dialog";
 import { useApplyToBounty } from "@/hooks/use-bounty-application";
 import { authClient } from "@/lib/auth-client";
+import type { BountyFieldsFragment } from "@/lib/graphql/generated";
 import type {
-  BountyFieldsFragment,
   ApplicationFormValues,
-} from "@/lib/graphql/generated";
-import type { Bounty, CancellationRecord } from "@/types/bounty";
+} from "@/components/bounty/application-dialog";
+import type { Bounty } from "@/types/bounty";
+import type { CancellationRecord } from "@/types/escrow";
 
 type SidebarBounty = BountyFieldsFragment & Partial<Bounty>;
 
